@@ -2,4 +2,4 @@
 
 Particle effect for cursor free moving in Emacs, inspired by neovide.
 
-You will need a package `power-mode` which can be found on ELPA.
+It uses the awesome package [power-mode.el](https://github.com/elizagamedev/power-mode.el), which can be found on MELPA.
