@@ -26,11 +26,11 @@
 
 ;;; Commentary:
 ;;
-;; Well, once I tried neovide and fell in love with its 'useless' 
+;; Well, once I tried neovide and fell in love with its 'useless'
 ;; cursor motion effects ... however, there has been an Emacs package
-;; that implemented particle effects, so --
+;; that implemented particle effects, so, let's play with it.
 ;;
-;; let's play with it.
+;; btw, it is never a nice idea to hack the code.
 
 ;;; Code:
 (require 'power-mode)
@@ -61,9 +61,6 @@
               (left . ,x)
               (top . ,y)
               (visibility . t))))))))
-
-(defvar railgun-render-method #'railgun--spawn-particles-at-point
-  "Default render method of railgun.")
 
 (defun railgun-line-xy (px py nx ny)
   "Moving cursor with a trailing visual effect from coord (PX PY) to (NX NY)."
@@ -101,28 +98,83 @@
           (railgun-line-xy (car start-x-y)
                            (cdr start-x-y)
                            (car end-x-y)
-                           (cdr end-x-y)))))
+                           (cdr end-x-y))
+          )))
+
+(defvar-local last-post-command-position 0
+  "Holds the cursor position from the last run of post-command-hooks.")
+
+(defun railgun-post-command-callback ()
+  "Draw a line after each command that moved current point."
+  (unless (equal (point) last-post-command-position)
+    (railgun-line last-post-command-position (point))
+    (setq last-post-command-position (point))))
 
 (define-minor-mode railgun-mode
   "Only my railgun!"
   :init-value nil
-  :lighter "Railgun"
+  :lighter "⚡"
 
-  (defvar last-post-command-position 0
-    "Holds the cursor position from the last run of post-command-hooks.")
-  (make-variable-buffer-local 'last-post-command-position)  
-
-  (defun railgun-post-command-callback ()
-    (unless (equal (point) last-post-command-position)
-      (railgun-line last-post-command-position (point))
-      (setq last-post-command-position (point))))
-
-  (power-mode)
   (if railgun-mode
       (progn
+        ;; do somework that done by power-mode first
+        (add-hook 'delete-frame-functions
+                  #'power-mode--delete-frame-function)
+        (add-hook 'window-size-change-functions
+                  #'power-mode--window-size-change-function)
+        (add-hook 'window-selection-change-functions
+                  #'power-mode--window-selection-change-function)
+
+        ;; Create dummy buffer.
+        (setq power-mode--dummy-buffer (power-mode--make-dummy-buffer))
+        ;; Make particle frames.
+        (dotimes (_ power-mode-particle-limit)
+          (setq power-mode--particle-dead-frames
+                (cons (power-mode--make-particle-frame (selected-frame))
+                        power-mode--particle-dead-frames)))
+        ;; Make shake frames for all top-level frames.
+        (dolist (frame (frame-list))
+          (unless (frame-parent frame)
+              (power-mode--make-shake-frame frame)))
+        ;; now shot the railgun
         (setq last-post-command-position (point))
-        (add-to-list 'post-command-hook #'railgun-post-command-callback))
-    (delete #'railgun-post-command-callback post-command-hook))
+        (add-to-list 'post-command-hook #'railgun-post-command-callback)
+        )
+    (progn
+      ;; release railgun
+      (delete #'railgun-post-command-callback post-command-hook)
+      ;; then clear power-mode
+      (remove-hook 'delete-frame-functions
+                   #'power-mode--delete-frame-function)
+      (remove-hook 'window-size-change-functions
+                   #'power-mode--window-size-change-function)
+      (remove-hook 'window-selection-change-functions
+                   #'power-mode--window-selection-change-function)
+      ;; Delete shake frames.
+      (dolist (pair power-mode--shake-frames)
+        (power-mode--delete-shake-frame (car pair) (cdr pair)))
+      (setq power-mode--shake-frames nil)
+      ;; Delete particle frames.
+      (dolist (frame power-mode--particle-live-frames)
+        (delete-frame frame))
+      (setq power-mode--particle-live-frames nil)
+      (dolist (frame power-mode--particle-dead-frames)
+        (delete-frame frame))
+      (setq power-mode--particle-dead-frames nil)
+      ;; Kill dummy buffer.
+      (kill-buffer power-mode--dummy-buffer)
+      (setq power-mode--dummy-buffer nil)
+      ;; Kill timers.
+      (when power-mode--streak-timeout-timer
+        (power-mode--streak-timeout))
+      (when power-mode--shake-timer
+        (cancel-timer power-mode--shake-timer)
+        (setq power-mode--shake-timer nil))
+      (when power-mode--particle-timer
+        (cancel-timer power-mode--particle-timer)
+        (setq power-mode--particle-timer nil))
+      )
+    )
   )
 
 (provide 'railgun)
