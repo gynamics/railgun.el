@@ -43,7 +43,8 @@
                            #'power-mode--animate-particles)))
    (let ((count (power-mode--random-range 2 2))
          (color (power-mode--foreground-color-before-point))
-         (parent-frame (selected-frame)))
+         (parent-frame (selected-frame))
+         (char-width (frame-char-width)))
      (dotimes (_ count)
        (when-let ((frame (pop power-mode--particle-dead-frames)))
          (push frame power-mode--particle-live-frames)
@@ -54,17 +55,23 @@
             `((parent-frame . ,parent-frame)
               (background-color . ,color)
               (power-mode--life . 3)
-              (power-mode--vx . ,(power-mode--random-range -3 3))
+              (power-mode--vx . ,(power-mode--random-range -5 5))
               (power-mode--vy . ,(power-mode--random-range -3 3))
               (power-mode--x . ,x)
               (power-mode--y . ,y)
+              (height . ,(/ char-width 3))
+              (width . ,(/ char-width 3))
               (left . ,x)
               (top . ,y)
               (visibility . t))))))))
 
-(defun railgun-line-xy (px py nx ny)
-  "Moving cursor with a trailing visual effect from coord (PX PY) to (NX NY)."
-  (let* ((sx (- nx px))
+(defun railgun-line-xy (p n)
+  "Moving cursor with a trailing visual effect from (X . Y) position P to N."
+  (let* ((px (car p))
+         (py (cdr p))
+         (nx (car n))
+         (ny (cdr n))
+         (sx (- nx px))
          (sy (- ny py))
          (dx 0)
          (dy 0)
@@ -88,28 +95,29 @@
     ))
 
 (defun railgun-line (start end)
-  "Moving cursor with a trailing visual effect from position START to END."
+  "Moving cursor with a trailing visual effect from point position START to END."
   (unless (or (< start (window-start))
               (> start (window-end))
               (< end   (window-start))
               (> end   (window-end)))
-    (let ((start-x-y   (posn-x-y (posn-at-point start)))
-          (end-x-y     (posn-x-y (posn-at-point  end))))
-          (railgun-line-xy (car start-x-y)
-                           (cdr start-x-y)
-                           (car end-x-y)
-                           (cdr end-x-y))
-          )))
+    (railgun-line-xy (posn-x-y (posn-at-point start))
+                     (posn-x-y (posn-at-point  end)))
+    ))
 
 (defvar-local last-post-command-position 0
   "Holds the cursor position from the last run of post-command-hooks.")
 
 (defun railgun-post-command-callback ()
-  "Draw a line after each command that moved current point."
-  (unless (equal (point) last-post-command-position)
-    (railgun-line last-post-command-position (point))
+  "Draw particle frames after each command that moved current point."
+  (let ((delta (abs (- (point) last-post-command-position))))
+    (cond
+     ((> delta 1) (railgun-line last-post-command-position (point)))
+     ((= delta 1) (railgun--spawn-particles-at-point
+                   (posn-x-y (posn-at-point (point)))))
+     )
     (setq last-post-command-position (point))))
 
+;;;###autoload
 (define-minor-mode railgun-mode
   "Only my railgun!"
   :init-value nil
