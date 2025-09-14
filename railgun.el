@@ -35,13 +35,12 @@
 ;;; Code:
 (require 'power-mode)
 
-(defun railgun--spawn-particles-at-point (position)
-  "Spawn particales at POSITION."
+(defun railgun--spawn-particles-at-point (position power)
+  "Spawn particales at POSITION with POWER."
    (unless power-mode--particle-timer
      (setq power-mode--particle-timer
-           (run-with-timer 0 0.05
-                           #'power-mode--animate-particles)))
-   (let ((count (power-mode--random-range 2 2))
+           (run-with-timer 0 0.1 #'power-mode--animate-particles)))
+   (let ((count (power-mode--random-range 0 (min (ceiling (sqrt power)) 3)))
          (color (power-mode--foreground-color-before-point))
          (parent-frame (selected-frame))
          (char-width (frame-char-width)))
@@ -65,7 +64,7 @@
               (top . ,y)
               (visibility . t))))))))
 
-(defun railgun-line-xy (p n)
+(defun railgun--line-xy (p n)
   "Moving cursor with a trailing visual effect from (X . Y) position P to N."
   (let* ((px (car p))
          (py (cdr p))
@@ -90,32 +89,37 @@
           (setq cnt (+ cnt delta)
                 px  (+ px (* delta dx))
                 py  (+ py (* delta dy)))
-          (railgun--spawn-particles-at-point `(,px . ,py)))
+          (railgun--spawn-particles-at-point `(,px . ,py) delta))
         ))
     ))
 
-(defun railgun-line (start end)
-  "Moving cursor with a trailing visual effect from point position START to END."
-  (unless (or (< start (window-start))
-              (> start (window-end))
-              (< end   (window-start))
-              (> end   (window-end)))
-    (railgun-line-xy (posn-x-y (posn-at-point start))
-                     (posn-x-y (posn-at-point  end)))
-    ))
-
-(defvar-local last-post-command-position 0
+(defvar-local railgun--last-point-position 0
   "Holds the cursor position from the last run of post-command-hooks.")
+
+(defvar-local railgun--debounce-interval 0.2
+  "Debounce interval for coordinate updating, in seconds.")
+
+(defvar-local railgun--debounce-lock nil
+  "A simple lock variable, t for locked and nil for unlocked.")
 
 (defun railgun-post-command-callback ()
   "Draw particle frames after each command that moved current point."
-  (let ((delta (abs (- (point) last-post-command-position))))
-    (cond
-     ((> delta 1) (railgun-line last-post-command-position (point)))
-     ((= delta 1) (railgun--spawn-particles-at-point
-                   (posn-x-y (posn-at-point (point)))))
-     )
-    (setq last-post-command-position (point))))
+  (when (setq railgun--debounce-lock t)
+    (when-let ((start (posn-at-point railgun--last-point-position))
+               (end (posn-at-point)))
+      (let ((start-xy (posn-x-y start))
+            (end-xy (posn-x-y end)))
+        (let ((delta-x (abs (- (car start-xy) (car end-xy))))
+              (delta-y (abs (- (cdr start-xy) (cdr end-xy)))))
+          (cond
+           ((and (= delta-x 0) (= delta-y 0)))
+           ((or (= delta-x 1) (= delta-y 1))
+            (railgun--spawn-particles-at-point end-xy 1))
+           (t (railgun--line-xy start-xy end-xy))))))
+    (setq railgun--last-point-position (point))
+    ;; release lock with delay
+    (run-at-time railgun--debounce-interval nil
+                 (lambda () (setq railgun--debounce-lock nil)))))
 
 ;;;###autoload
 (define-minor-mode railgun-mode
@@ -140,12 +144,8 @@
           (setq power-mode--particle-dead-frames
                 (cons (power-mode--make-particle-frame (selected-frame))
                         power-mode--particle-dead-frames)))
-        ;; Make shake frames for all top-level frames.
-        (dolist (frame (frame-list))
-          (unless (frame-parent frame)
-              (power-mode--make-shake-frame frame)))
         ;; now shot the railgun
-        (setq last-post-command-position (point))
+        (setq railgun--last-point-position (point))
         (add-to-list 'post-command-hook #'railgun-post-command-callback)
         )
     (progn
@@ -158,10 +158,6 @@
                    #'power-mode--window-size-change-function)
       (remove-hook 'window-selection-change-functions
                    #'power-mode--window-selection-change-function)
-      ;; Delete shake frames.
-      (dolist (pair power-mode--shake-frames)
-        (power-mode--delete-shake-frame (car pair) (cdr pair)))
-      (setq power-mode--shake-frames nil)
       ;; Delete particle frames.
       (dolist (frame power-mode--particle-live-frames)
         (delete-frame frame))
