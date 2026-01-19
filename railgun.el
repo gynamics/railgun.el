@@ -1,9 +1,9 @@
-;;; railgun.el --- only my railgun  -*- lexical-binding: t -*-
+;;; railgun.el --- Only my railgun  -*- lexical-binding: t -*-
 
 ;; Author: gynamics
 ;; Maintainer: gynamics
 ;; Package-Version: 0.1
-;; Package-Requires: ((power-mode))
+;; Package-Requires: ((emacs "25.1") (power-mode "0.1"))
 ;; URL: https://github.com/gynamics/railgun.el
 ;; Keywords: games
 
@@ -89,9 +89,7 @@
           (setq cnt (+ cnt delta)
                 px  (+ px (* delta dx))
                 py  (+ py (* delta dy)))
-          (railgun--spawn-particles-at-point `(,px . ,py) delta))
-        ))
-    ))
+          (railgun--spawn-particles-at-point `(,px . ,py) delta))))))
 
 (defvar-local railgun--last-point-position 0
   "Holds the cursor position from the last run of post-command-hooks.")
@@ -146,8 +144,8 @@
                         power-mode--particle-dead-frames)))
         ;; now shot the railgun
         (setq railgun--last-point-position (point))
-        (add-to-list 'post-command-hook #'railgun-post-command-callback)
-        )
+        (add-to-list 'post-command-hook #'railgun-post-command-callback))
+
     (progn
       ;; release railgun
       (delete #'railgun-post-command-callback post-command-hook)
@@ -176,10 +174,7 @@
         (setq power-mode--shake-timer nil))
       (when power-mode--particle-timer
         (cancel-timer power-mode--particle-timer)
-        (setq power-mode--particle-timer nil))
-      )
-    )
-  )
+        (setq power-mode--particle-timer nil)))))
 
 (provide 'railgun)
 
